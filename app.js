@@ -1,13 +1,35 @@
-// ===== Wealthspan — 人生の予算アプリ =====
+// ===== UntilTheEnd — 人生の予算アプリ =====
 const MAX_AGE = 100;
 
 // ---- helpers ----
 const yen = (n) => Math.round(n).toLocaleString("ja-JP") + "円";
 const man = (n) => Math.round(n / 10000).toLocaleString("ja-JP") + "万円";
 const num = (id) => {
-  const v = parseFloat(document.getElementById(id).value);
+  const v = parseFloat(String(document.getElementById(id).value).replace(/,/g, ""));
   return isNaN(v) ? 0 : v;
 };
+
+// 金額入力欄を 3 桁カンマ区切りに整形（キャレット位置を維持）
+function formatMoneyInput(el) {
+  const before = el.value;
+  const caret = el.selectionStart ?? before.length;
+  const digitsBeforeCaret = before.slice(0, caret).replace(/[^0-9]/g, "").length;
+  const digits = before.replace(/[^0-9]/g, "");
+  if (digits === "") {
+    el.value = "";
+    return;
+  }
+  const formatted = Number(digits).toLocaleString("en-US");
+  el.value = formatted;
+  // キャレットを同じ「桁数目」に復元
+  let seen = 0, pos = 0;
+  for (; pos < formatted.length; pos++) {
+    if (/[0-9]/.test(formatted[pos])) seen++;
+    if (seen >= digitsBeforeCaret) { pos++; break; }
+  }
+  if (digitsBeforeCaret === 0) pos = 0;
+  try { el.setSelectionRange(pos, pos); } catch (_) {}
+}
 // 年利(%) -> 月複利率
 const monthlyRate = (annualPct) => Math.pow(1 + annualPct / 100, 1 / 12) - 1;
 
@@ -299,6 +321,12 @@ document.addEventListener("DOMContentLoaded", () => {
       tableMode = b.dataset.mode;
       renderTable();
     });
+  });
+
+  // 金額欄をカンマ区切りに（入力中も整形、初期値も整形）
+  document.querySelectorAll("input.money").forEach((el) => {
+    formatMoneyInput(el);
+    el.addEventListener("input", () => formatMoneyInput(el));
   });
 
   // 初期計算(サンプル値で結果を表示)

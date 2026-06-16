@@ -35,15 +35,15 @@
           <div class="field"><label for="f_rate">年間の利回り</label>
             <div class="input-wrap"><input id="f_rate" type="number" step="0.1" value="3" /><span class="unit">%</span></div></div>
           <div class="field"><label for="f_income">月の収入</label>
-            <div class="input-wrap"><input id="f_income" type="number" step="1000" value="300000" /><span class="unit">円</span></div></div>
+            <div class="input-wrap"><input id="f_income" class="money" type="text" inputmode="numeric" value="300000" /><span class="unit">円</span></div></div>
           <div class="field"><label for="f_expense">月の出費</label>
-            <div class="input-wrap"><input id="f_expense" type="number" step="1000" value="320000" /><span class="unit">円</span></div></div>
+            <div class="input-wrap"><input id="f_expense" class="money" type="text" inputmode="numeric" value="320000" /><span class="unit">円</span></div></div>
           <div class="field"><label for="f_assets">現在の資産</label>
-            <div class="input-wrap"><input id="f_assets" type="number" step="100000" value="15000000" /><span class="unit">円</span></div></div>
+            <div class="input-wrap"><input id="f_assets" class="money" type="text" inputmode="numeric" value="15000000" /><span class="unit">円</span></div></div>
           <div class="field"><label for="f_infl">インフレ率（任意）</label>
             <div class="input-wrap"><input id="f_infl" type="number" step="0.1" placeholder="未入力なら考慮しない" /><span class="unit">%</span></div></div>
           <div class="field"><label for="f_pension">年金の月額（任意）</label>
-            <div class="input-wrap"><input id="f_pension" type="number" step="1000" placeholder="未入力なら考慮しない" /><span class="unit">円</span></div></div>
+            <div class="input-wrap"><input id="f_pension" class="money" type="text" inputmode="numeric" placeholder="未入力なら考慮しない" /><span class="unit">円</span></div></div>
           <div class="field"><label for="f_pensionage">年金の受給開始年齢（任意）</label>
             <div class="input-wrap"><input id="f_pensionage" type="number" placeholder="例: 65" /><span class="unit">歳</span></div></div>
         </div>
@@ -84,17 +84,17 @@
           <div class="field"><label for="r_death">何歳まで生きる想定</label>
             <div class="input-wrap"><input id="r_death" type="number" value="80" /><span class="unit">歳</span></div></div>
           <div class="field"><label for="r_target">死亡時に残したい資産</label>
-            <div class="input-wrap"><input id="r_target" type="number" step="100000" value="5000000" /><span class="unit">円</span></div></div>
+            <div class="input-wrap"><input id="r_target" class="money" type="text" inputmode="numeric" value="5000000" /><span class="unit">円</span></div></div>
           <div class="field"><label for="r_assets">現在の資産</label>
-            <div class="input-wrap"><input id="r_assets" type="number" step="100000" value="15000000" /><span class="unit">円</span></div></div>
+            <div class="input-wrap"><input id="r_assets" class="money" type="text" inputmode="numeric" value="15000000" /><span class="unit">円</span></div></div>
           <div class="field"><label for="r_income">月の収入</label>
-            <div class="input-wrap"><input id="r_income" type="number" step="1000" value="200000" /><span class="unit">円</span></div></div>
+            <div class="input-wrap"><input id="r_income" class="money" type="text" inputmode="numeric" value="200000" /><span class="unit">円</span></div></div>
           <div class="field"><label for="r_rate">年間の利回り</label>
             <div class="input-wrap"><input id="r_rate" type="number" step="0.1" value="3" /><span class="unit">%</span></div></div>
           <div class="field"><label for="r_infl">インフレ率（任意）</label>
             <div class="input-wrap"><input id="r_infl" type="number" step="0.1" placeholder="未入力なら考慮しない" /><span class="unit">%</span></div></div>
           <div class="field"><label for="r_pension">年金の月額（任意）</label>
-            <div class="input-wrap"><input id="r_pension" type="number" step="1000" placeholder="未入力なら考慮しない" /><span class="unit">円</span></div></div>
+            <div class="input-wrap"><input id="r_pension" class="money" type="text" inputmode="numeric" placeholder="未入力なら考慮しない" /><span class="unit">円</span></div></div>
           <div class="field"><label for="r_pensionage">年金の受給開始年齢（任意）</label>
             <div class="input-wrap"><input id="r_pensionage" type="number" placeholder="例: 65" /><span class="unit">歳</span></div></div>
         </div>
