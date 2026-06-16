@@ -298,6 +298,28 @@ function runForward() {
   document.getElementById("f_output").classList.remove("hidden");
 }
 
+// 逆算プラン用: 指定した月の出費で資産がどう動くかを投影（現在〜想定寿命）
+function projectReverse(input, expenseUsed) {
+  const { age, deathAge, assets, income, ratePct, inflPct, pension, pensionAge, oneTimes } = input;
+  const r = monthlyRate(ratePct);
+  const infl = (inflPct || 0) / 100;
+  const hasPension = pension > 0 && pensionAge > 0;
+  const N = Math.max(1, Math.round((deathAge - age) * 12));
+  const lump = lumpMapFor(oneTimes, age, N);
+  let bal = assets;
+  const points = [{ age, balance: assets }];
+  let zeroAge = null;
+  for (let m = 0; m < N; m++) {
+    const curAge = age + m / 12;
+    const expM = expenseUsed * Math.pow(1 + infl, m / 12);
+    const incM = income + (hasPension && curAge >= pensionAge ? pension : 0);
+    bal = bal * (1 + r) + (incM - expM - (lump[m] || 0));
+    if (bal <= 0 && zeroAge === null) zeroAge = age + (m + 1) / 12;
+    if ((m + 1) % 12 === 0 || m === N - 1) points.push({ age: age + (m + 1) / 12, balance: bal });
+  }
+  return { points, endBalance: bal, zeroAge };
+}
+
 // ===== 逆算: 計算実行 =====
 function runReverse() {
   const input = {
@@ -333,6 +355,33 @@ function runReverse() {
     <div class="stat"><div class="k">月の収入</div><div class="v">${yen(input.income)}</div></div>
     <div class="stat"><div class="k">年金</div><div class="v">${pensionTxt}</div></div>
     <div class="stat"><div class="k">使える期間</div><div class="v">${input.deathAge - input.age}年</div></div>`;
+
+  // 資産推移グラフ：月の出費（任意）を入れたらその額、空欄なら使える上限額で描画
+  const expenseEntered = num("r_expense");
+  const usable = Math.max(res.expense, 0);
+  const expenseUsed = expenseEntered > 0 ? expenseEntered : usable;
+  const proj = projectReverse(input, expenseUsed);
+  document.getElementById("r_chart").innerHTML = renderChart(proj.points, proj.zeroAge);
+
+  const note = document.getElementById("r_chart_note");
+  if (expenseEntered > 0) {
+    if (proj.zeroAge) {
+      note.innerHTML =
+        `月 <b>${yen(expenseEntered)}</b> で使い続けると、` +
+        `<span style="color:var(--red)">⚠ ${proj.zeroAge.toFixed(1)}歳で資産が尽きます</span>（目標 ${man(input.targetAssets)} には届きません）。`;
+    } else {
+      const reach = proj.endBalance >= input.targetAssets;
+      const color = reach ? "var(--green-dark)" : "var(--red)";
+      note.innerHTML =
+        `月 <b>${yen(expenseEntered)}</b> で使い続けると、${input.deathAge}歳時点で ` +
+        `<b style="color:${color}">${man(proj.endBalance)}</b> 残ります（目標 ${man(input.targetAssets)}）。` +
+        (reach ? " 目標を達成できます。" : " 目標額には届きません。");
+    }
+  } else if (res.expense < 0) {
+    note.textContent = "支出を最小にしても目標に届かないため、月の出費0円での推移を表示しています。";
+  } else {
+    note.innerHTML = `使える上限（月 <b>${yen(usable)}</b>）で使った場合の推移です。${input.deathAge}歳でちょうど目標 ${man(input.targetAssets)} が残ります。`;
+  }
 
   document.getElementById("r_output").classList.remove("hidden");
 }

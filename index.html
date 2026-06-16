@@ -99,6 +99,8 @@
             <div class="input-wrap"><input id="r_assets" class="money" type="text" inputmode="numeric" value="15000000" /><span class="unit">円</span></div></div>
           <div class="field"><label for="r_income">月の収入</label>
             <div class="input-wrap"><input id="r_income" class="money" type="text" inputmode="numeric" value="200000" /><span class="unit">円</span></div></div>
+          <div class="field"><label for="r_expense">月の出費（任意・試算用）</label>
+            <div class="input-wrap"><input id="r_expense" class="money" type="text" inputmode="numeric" placeholder="空欄なら上限額で試算" /><span class="unit">円</span></div></div>
           <div class="field"><label for="r_rate">年間の利回り</label>
             <div class="input-wrap"><input id="r_rate" type="number" step="0.1" value="3" /><span class="unit">%</span></div></div>
           <div class="field"><label for="r_infl">インフレ率（任意）</label>
@@ -125,6 +127,11 @@
         <div class="card">
           <div id="r_hero" class="result-hero"></div>
           <div id="r_stats" class="stat-row"></div>
+        </div>
+        <div class="card chart-card">
+          <h2>資産の推移（〜想定寿命）</h2>
+          <p class="hint" id="r_chart_note">青い線が資産残高。赤い点線が資産ゼロのタイミングです。</p>
+          <div id="r_chart"></div>
         </div>
       </div>
     </section>
