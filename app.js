@@ -12,9 +12,11 @@ const num = (id) => {
 const monthlyRate = (annualPct) => Math.pow(1 + annualPct / 100, 1 / 12) - 1;
 
 // ===== 順方向シミュレーション =====
-function simulate({ age, income, expense, assets, ratePct }) {
+// 任意項目（inflPct / pension / pensionAge）は 0 や未入力なら自動で除外される
+function simulate({ age, income, expense, assets, ratePct, inflPct, pension, pensionAge }) {
   const r = monthlyRate(ratePct);
-  const net = income - expense; // 月の収支
+  const infl = (inflPct || 0) / 100;
+  const hasPension = pension > 0 && pensionAge > 0;
   let bal = assets;
   const months = [];
   let zeroAge = null;
@@ -22,9 +24,13 @@ function simulate({ age, income, expense, assets, ratePct }) {
   const totalMonths = (MAX_AGE - age) * 12;
 
   for (let m = 0; m < totalMonths; m++) {
+    const curAge = age + m / 12;
+    const expM = expense * Math.pow(1 + infl, m / 12); // 支出はインフレで増加
+    const incM = income + (hasPension && curAge >= pensionAge ? pension : 0); // 受給開始後は年金を加算
+    const net = incM - expM;
     bal = bal * (1 + r) + net; // 月初に運用益、月末に収支を反映
     const ageAtMonth = age + Math.floor(m / 12);
-    months.push({ m, age: ageAtMonth, income, expense, net, balance: bal });
+    months.push({ m, age: ageAtMonth, income: incM, expense: expM, net, balance: bal });
     if (bal <= 0 && zeroAge === null) {
       zeroAge = age + (m + 1) / 12;
       zeroMonth = m;
@@ -36,23 +42,33 @@ function simulate({ age, income, expense, assets, ratePct }) {
   const lasts = zeroAge === null;
   const growing = lasts && finalBalance > assets;
 
-  return { r, net, months, zeroAge, zeroMonth, finalBalance, lasts, growing, startAge: age, startAssets: assets };
+  return { r, months, zeroAge, zeroMonth, finalBalance, lasts, growing, startAge: age, startAssets: assets };
 }
 
 // ===== 逆算 =====
-// deathAge 時点で targetAssets を残すには、月いくら使えるか
-function reverseSolve({ age, deathAge, targetAssets, assets, income, ratePct }) {
+// deathAge 時点で targetAssets を残すには、月いくら使えるか（今の物価基準）
+// インフレ・年金を将来価値の総和で厳密に解く。任意項目は 0 で自動除外。
+function reverseSolve({ age, deathAge, targetAssets, assets, income, ratePct, inflPct, pension, pensionAge }) {
   const r = monthlyRate(ratePct);
+  const infl = (inflPct || 0) / 100;
+  const hasPension = pension > 0 && pensionAge > 0;
   const N = Math.max(1, Math.round((deathAge - age) * 12));
-  let net; // 月の収支 = income - expense
-  if (Math.abs(r) < 1e-9) {
-    net = (targetAssets - assets) / N;
-  } else {
-    const growth = Math.pow(1 + r, N);
-    const annuityFactor = (growth - 1) / r;
-    net = (targetAssets - assets * growth) / annuityFactor;
+
+  // 最終時点(=N ヶ月後)の将来価値で収支を組み立て、基準支出 E について線形に解く
+  const growthN = Math.pow(1 + r, N);
+  let fvIncome = 0;       // 収入ストリームの将来価値
+  let fvExpenseUnit = 0;  // 基準支出 E=1 のときの支出ストリーム将来価値（E の係数）
+  for (let m = 0; m < N; m++) {
+    const curAge = age + m / 12;
+    const incM = income + (hasPension && curAge >= pensionAge ? pension : 0);
+    const fvFactor = Math.pow(1 + r, N - 1 - m); // その月の収支がN時点まで複利で増える倍率
+    fvIncome += incM * fvFactor;
+    fvExpenseUnit += Math.pow(1 + infl, m / 12) * fvFactor;
   }
-  const expense = income - net; // 月に使える総額
+  const fvAssets = assets * growthN;
+  // target = fvAssets + fvIncome - E * fvExpenseUnit
+  const expense = (fvAssets + fvIncome - targetAssets) / fvExpenseUnit; // 今の物価での月の使える額
+  const net = income - expense; // 受給前・現在時点の月の収支イメージ
   return { r, N, net, expense };
 }
 
@@ -116,16 +132,23 @@ let tableMode = "year";
 
 function buildYearlyRows(sim) {
   const rows = [];
-  sim.months.forEach((mo) => {
-    if ((mo.m + 1) % 12 === 0 || mo.m === sim.months.length - 1) {
+  let accIncome = 0, accExpense = 0;
+  sim.months.forEach((mo, i) => {
+    accIncome += mo.income;
+    accExpense += mo.expense;
+    const isYearEnd = (mo.m + 1) % 12 === 0;
+    const isLast = i === sim.months.length - 1;
+    if (isYearEnd || isLast) {
       rows.push({
         head: `${mo.age}歳`,
-        income: mo.income * 12,
-        expense: mo.expense * 12,
-        net: mo.net * 12,
+        income: accIncome,
+        expense: accExpense,
+        net: accIncome - accExpense,
         balance: mo.balance,
         zero: mo.balance <= 0,
       });
+      accIncome = 0;
+      accExpense = 0;
     }
   });
   return rows;
@@ -170,6 +193,9 @@ function runForward() {
     expense: num("f_expense"),
     assets: num("f_assets"),
     ratePct: num("f_rate"),
+    inflPct: num("f_infl"),
+    pension: num("f_pension"),
+    pensionAge: num("f_pensionage"),
   };
   const sim = simulate(input);
   lastSim = sim;
@@ -190,12 +216,13 @@ function runForward() {
       <div class="sub">100歳時点の資産（${trend}）</div>`;
   }
 
-  // 統計
+  // 統計（現在時点の収支＋有効になっている前提）
   const monthlyNet = input.income - input.expense;
+  const pensionTxt = input.pension > 0 && input.pensionAge > 0 ? `${man(input.pension)} / ${input.pensionAge}歳〜` : "なし";
   document.getElementById("f_stats").innerHTML = `
-    <div class="stat"><div class="k">月の収支</div><div class="v ${monthlyNet >= 0 ? "pos" : "neg"}">${monthlyNet >= 0 ? "+" : ""}${yen(monthlyNet)}</div></div>
-    <div class="stat"><div class="k">年間収支</div><div class="v ${monthlyNet >= 0 ? "pos" : "neg"}">${monthlyNet >= 0 ? "+" : ""}${yen(monthlyNet * 12)}</div></div>
-    <div class="stat"><div class="k">想定利回り(年)</div><div class="v">${input.ratePct}%</div></div>`;
+    <div class="stat"><div class="k">月の収支（現在）</div><div class="v ${monthlyNet >= 0 ? "pos" : "neg"}">${monthlyNet >= 0 ? "+" : ""}${yen(monthlyNet)}</div></div>
+    <div class="stat"><div class="k">年金</div><div class="v">${pensionTxt}</div></div>
+    <div class="stat"><div class="k">利回り / インフレ</div><div class="v">${input.ratePct}% / ${input.inflPct || 0}%</div></div>`;
 
   // チャート用ポイント(開始点＋年末)
   const points = [{ age: input.age, balance: input.assets }];
@@ -218,9 +245,13 @@ function runReverse() {
     assets: num("r_assets"),
     income: num("r_income"),
     ratePct: num("r_rate"),
+    inflPct: num("r_infl"),
+    pension: num("r_pension"),
+    pensionAge: num("r_pensionage"),
   };
   const res = reverseSolve(input);
   const hero = document.getElementById("r_hero");
+  const inflNote = input.inflPct > 0 ? "（今の物価基準）" : "";
 
   if (res.expense < 0) {
     hero.className = "result-hero warn";
@@ -229,15 +260,15 @@ function runReverse() {
       <div class="sub">目標を達成するには、支出ゼロでも月 ${yen(-res.expense)} の追加貯蓄が必要です。収入・利回り・目標額を見直してください。</div>`;
   } else {
     hero.className = "result-hero good";
-    hero.innerHTML = `<div class="label">毎月使える金額</div>
+    hero.innerHTML = `<div class="label">毎月使える金額${inflNote}</div>
       <div class="big">${yen(res.expense)}</div>
-      <div class="sub">${input.deathAge}歳で ${man(input.targetAssets)} を残す前提（利回り ${input.ratePct}%／年）</div>`;
+      <div class="sub">${input.deathAge}歳で ${man(input.targetAssets)} を残す前提（利回り ${input.ratePct}%／年${input.inflPct > 0 ? `・インフレ ${input.inflPct}%` : ""}）</div>`;
   }
 
-  const fromAssets = -res.net; // 資産からの取り崩し額(月)
+  const pensionTxt = input.pension > 0 && input.pensionAge > 0 ? `${man(input.pension)} / ${input.pensionAge}歳〜` : "なし";
   document.getElementById("r_stats").innerHTML = `
     <div class="stat"><div class="k">月の収入</div><div class="v">${yen(input.income)}</div></div>
-    <div class="stat"><div class="k">うち資産取崩し(月)</div><div class="v ${fromAssets > 0 ? "pos" : ""}">${fromAssets > 0 ? yen(fromAssets) : "なし"}</div></div>
+    <div class="stat"><div class="k">年金</div><div class="v">${pensionTxt}</div></div>
     <div class="stat"><div class="k">使える期間</div><div class="v">${input.deathAge - input.age}年</div></div>`;
 
   document.getElementById("r_output").classList.remove("hidden");
