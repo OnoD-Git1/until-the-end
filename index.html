@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wealthspan — 人生の予算アプリ</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%232563eb'/%3E%3Cpath d='M20 65 L40 45 L55 58 L80 30' stroke='white' stroke-width='8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="app-header">
+      <div class="logo">
+        <svg viewBox="0 0 100 100"><path d="M18 68 L40 44 L56 58 L82 28" stroke="white" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="brand">
+        <h1>Wealthspan</h1>
+        <p class="tag">あなたのお金は、何歳まで持つ？ — 人生の収支シミュレーター</p>
+      </div>
+    </header>
+
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-target="panel-forward">資産シミュレーション</button>
+      <button class="tab" data-target="panel-reverse">逆算プラン</button>
+    </div>
+
+    <!-- ===== 順方向 ===== -->
+    <section id="panel-forward" class="panel">
+      <div class="card">
+        <h2>毎月の収支と資産を入力</h2>
+        <p class="hint">現在の状況を入れると、何歳でお金がゼロになるか／100歳までの推移を計算します。</p>
+        <div class="grid">
+          <div class="field"><label for="f_age">現在の年齢</label>
+            <div class="input-wrap"><input id="f_age" type="number" value="35" /><span class="unit">歳</span></div></div>
+          <div class="field"><label for="f_rate">年間の利回り</label>
+            <div class="input-wrap"><input id="f_rate" type="number" step="0.1" value="3" /><span class="unit">%</span></div></div>
+          <div class="field"><label for="f_income">月の収入</label>
+            <div class="input-wrap"><input id="f_income" type="number" step="1000" value="300000" /><span class="unit">円</span></div></div>
+          <div class="field"><label for="f_expense">月の出費</label>
+            <div class="input-wrap"><input id="f_expense" type="number" step="1000" value="320000" /><span class="unit">円</span></div></div>
+          <div class="field"><label for="f_assets">現在の資産</label>
+            <div class="input-wrap"><input id="f_assets" type="number" step="100000" value="15000000" /><span class="unit">円</span></div></div>
+        </div>
+        <button id="f_run" class="btn">この条件で計算する</button>
+      </div>
+
+      <div id="f_output" class="hidden">
+        <div class="card">
+          <div id="f_hero" class="result-hero"></div>
+          <div id="f_stats" class="stat-row"></div>
+        </div>
+        <div class="card chart-card">
+          <h2>資産の推移（〜100歳）</h2>
+          <p class="hint">青い線が資産残高。赤い点線が資産ゼロのタイミングです。</p>
+          <div id="f_chart"></div>
+        </div>
+        <div class="card">
+          <div class="table-head">
+            <h2>収支の表</h2>
+            <div class="toggle" id="tableToggle">
+              <button class="active" data-mode="year">年次</button>
+              <button data-mode="month">月次</button>
+            </div>
+          </div>
+          <div class="table-scroll" id="tableScroll"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 逆算 ===== -->
+    <section id="panel-reverse" class="panel hidden">
+      <div class="card">
+        <h2>残したい資産から、使える額を逆算</h2>
+        <p class="hint">「何歳まで生きて、いくら残したいか」を決めると、毎月いくらまで使えるかを計算します。</p>
+        <div class="grid">
+          <div class="field"><label for="r_age">現在の年齢</label>
+            <div class="input-wrap"><input id="r_age" type="number" value="35" /><span class="unit">歳</span></div></div>
+          <div class="field"><label for="r_death">何歳まで生きる想定</label>
+            <div class="input-wrap"><input id="r_death" type="number" value="80" /><span class="unit">歳</span></div></div>
+          <div class="field"><label for="r_target">死亡時に残したい資産</label>
+            <div class="input-wrap"><input id="r_target" type="number" step="100000" value="5000000" /><span class="unit">円</span></div></div>
+          <div class="field"><label for="r_assets">現在の資産</label>
+            <div class="input-wrap"><input id="r_assets" type="number" step="100000" value="15000000" /><span class="unit">円</span></div></div>
+          <div class="field"><label for="r_income">月の収入</label>
+            <div class="input-wrap"><input id="r_income" type="number" step="1000" value="200000" /><span class="unit">円</span></div></div>
+          <div class="field"><label for="r_rate">年間の利回り</label>
+            <div class="input-wrap"><input id="r_rate" type="number" step="0.1" value="3" /><span class="unit">%</span></div></div>
+        </div>
+        <button id="r_run" class="btn green">逆算する</button>
+      </div>
+
+      <div id="r_output" class="hidden">
+        <div class="card">
+          <div id="r_hero" class="result-hero"></div>
+          <div id="r_stats" class="stat-row"></div>
+        </div>
+      </div>
+    </section>
+
+    <p class="footer-note">※ 計算は月複利の単純モデルです。インフレ・税金・年金・支出変動は考慮していません。あくまで目安としてご利用ください。</p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
