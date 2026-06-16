@@ -58,11 +58,12 @@ function lumpMapFor(oneTimes, startAge, totalMonths) {
 
 // ===== 順方向シミュレーション =====
 // 任意項目（inflPct / pension / pensionAge / oneTimes）は 0・未入力・空なら自動で除外される
-function simulate({ age, income, expense, assets, ratePct, inflPct, pension, pensionAge, bonus, oneTimes }) {
+function simulate({ age, income, expense, assets, ratePct, inflPct, pension, pensionAge, bonus, retireAge, oneTimes }) {
   const r = monthlyRate(ratePct);
   const infl = (inflPct || 0) / 100;
   const hasPension = pension > 0 && pensionAge > 0;
   const bonusY = bonus || 0;
+  const retire = retireAge || 0; // 退職年齢（0なら退職しない）
   let bal = assets;
   const months = [];
   let zeroAge = null;
@@ -73,8 +74,9 @@ function simulate({ age, income, expense, assets, ratePct, inflPct, pension, pen
   for (let m = 0; m < totalMonths; m++) {
     const curAge = age + m / 12;
     const expM = expense * Math.pow(1 + infl, m / 12); // 支出はインフレで増加
-    const bonusNow = (m + 1) % 12 === 0 ? bonusY : 0; // 賞与は年1回（年末月）に加算
-    const incM = income + (hasPension && curAge >= pensionAge ? pension : 0) + bonusNow; // 年金・賞与を加算
+    const working = !retire || curAge < retire; // 退職年齢前のみ就労収入あり
+    const bonusNow = working && (m + 1) % 12 === 0 ? bonusY : 0; // 賞与は就労中・年1回
+    const incM = (working ? income : 0) + (hasPension && curAge >= pensionAge ? pension : 0) + bonusNow; // 退職後は月収・賞与を停止し年金のみ
     const lump = lumpByMonth[m] || 0; // その月の突発的な出費
     const net = incM - expM - lump;
     bal = bal * (1 + r) + net; // 月初に運用益、月末に収支を反映
@@ -97,11 +99,12 @@ function simulate({ age, income, expense, assets, ratePct, inflPct, pension, pen
 // ===== 逆算 =====
 // deathAge 時点で targetAssets を残すには、月いくら使えるか（今の物価基準）
 // インフレ・年金を将来価値の総和で厳密に解く。任意項目は 0 で自動除外。
-function reverseSolve({ age, deathAge, targetAssets, assets, income, ratePct, inflPct, pension, pensionAge, bonus, oneTimes }) {
+function reverseSolve({ age, deathAge, targetAssets, assets, income, ratePct, inflPct, pension, pensionAge, bonus, retireAge, oneTimes }) {
   const r = monthlyRate(ratePct);
   const infl = (inflPct || 0) / 100;
   const hasPension = pension > 0 && pensionAge > 0;
   const bonusY = bonus || 0;
+  const retire = retireAge || 0;
   const N = Math.max(1, Math.round((deathAge - age) * 12));
   const lumpByMonth = lumpMapFor(oneTimes, age, N);
 
@@ -111,8 +114,9 @@ function reverseSolve({ age, deathAge, targetAssets, assets, income, ratePct, in
   let fvExpenseUnit = 0;  // 基準支出 E=1 のときの支出ストリーム将来価値（E の係数）
   for (let m = 0; m < N; m++) {
     const curAge = age + m / 12;
-    const bonusNow = (m + 1) % 12 === 0 ? bonusY : 0; // 賞与は年1回
-    const incM = income + (hasPension && curAge >= pensionAge ? pension : 0) + bonusNow;
+    const working = !retire || curAge < retire;
+    const bonusNow = working && (m + 1) % 12 === 0 ? bonusY : 0; // 賞与は就労中・年1回
+    const incM = (working ? income : 0) + (hasPension && curAge >= pensionAge ? pension : 0) + bonusNow;
     const lump = lumpByMonth[m] || 0; // 突発的な出費（既知の流出）
     const fvFactor = Math.pow(1 + r, N - 1 - m); // その月の収支がN時点まで複利で増える倍率
     fvIncome += (incM - lump) * fvFactor;
@@ -262,6 +266,7 @@ function runForward() {
     pension: num("f_pension"),
     pensionAge: num("f_pensionage"),
     bonus: num("f_bonus"),
+    retireAge: num("f_retire"),
     oneTimes: readOneTimes("f_events"),
   };
   const sim = simulate(input);
@@ -305,11 +310,12 @@ function runForward() {
 
 // 逆算プラン用: 指定した月の出費で資産がどう動くかを投影（現在〜想定寿命）
 function projectReverse(input, expenseUsed) {
-  const { age, deathAge, assets, income, ratePct, inflPct, pension, pensionAge, bonus, oneTimes } = input;
+  const { age, deathAge, assets, income, ratePct, inflPct, pension, pensionAge, bonus, retireAge, oneTimes } = input;
   const r = monthlyRate(ratePct);
   const infl = (inflPct || 0) / 100;
   const hasPension = pension > 0 && pensionAge > 0;
   const bonusY = bonus || 0;
+  const retire = retireAge || 0;
   const N = Math.max(1, Math.round((deathAge - age) * 12));
   const lump = lumpMapFor(oneTimes, age, N);
   let bal = assets;
@@ -318,8 +324,9 @@ function projectReverse(input, expenseUsed) {
   for (let m = 0; m < N; m++) {
     const curAge = age + m / 12;
     const expM = expenseUsed * Math.pow(1 + infl, m / 12);
-    const bonusNow = (m + 1) % 12 === 0 ? bonusY : 0;
-    const incM = income + (hasPension && curAge >= pensionAge ? pension : 0) + bonusNow;
+    const working = !retire || curAge < retire;
+    const bonusNow = working && (m + 1) % 12 === 0 ? bonusY : 0;
+    const incM = (working ? income : 0) + (hasPension && curAge >= pensionAge ? pension : 0) + bonusNow;
     bal = bal * (1 + r) + (incM - expM - (lump[m] || 0));
     if (bal <= 0 && zeroAge === null) zeroAge = age + (m + 1) / 12;
     if ((m + 1) % 12 === 0 || m === N - 1) points.push({ age: age + (m + 1) / 12, balance: bal });
@@ -340,6 +347,7 @@ function runReverse() {
     pension: num("r_pension"),
     pensionAge: num("r_pensionage"),
     bonus: num("r_bonus"),
+    retireAge: num("r_retire"),
     oneTimes: readOneTimes("r_events"),
   };
   const res = reverseSolve(input);
