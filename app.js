@@ -5,16 +5,21 @@ const MAX_AGE = 100;
 const yen = (n) => Math.round(n).toLocaleString("ja-JP") + "円";
 const man = (n) => Math.round(n / 10000).toLocaleString("ja-JP") + "万円";
 const num = (id) => {
-  const v = parseFloat(String(document.getElementById(id).value).replace(/,/g, ""));
+  const raw = toHalfWidth(document.getElementById(id).value).replace(/,/g, "");
+  const v = parseFloat(raw);
   return isNaN(v) ? 0 : v;
 };
 
-// 金額入力欄を 3 桁カンマ区切りに整形（キャレット位置を維持）
+// 全角数字（０-９）を半角に変換
+const toHalfWidth = (s) =>
+  String(s).replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0));
+
+// 金額入力欄を 3 桁カンマ区切りに整形（全角→半角変換・キャレット位置を維持）
 function formatMoneyInput(el) {
   const before = el.value;
   const caret = el.selectionStart ?? before.length;
-  const digitsBeforeCaret = before.slice(0, caret).replace(/[^0-9]/g, "").length;
-  const digits = before.replace(/[^0-9]/g, "");
+  const digitsBeforeCaret = toHalfWidth(before.slice(0, caret)).replace(/[^0-9]/g, "").length;
+  const digits = toHalfWidth(before).replace(/[^0-9]/g, "");
   if (digits === "") {
     el.value = "";
     return;
@@ -30,12 +35,30 @@ function formatMoneyInput(el) {
   if (digitsBeforeCaret === 0) pos = 0;
   try { el.setSelectionRange(pos, pos); } catch (_) {}
 }
+
+// 金額欄にイベントを配線（IME変換中は待つ、変換確定・離脱時にも整形）
+function attachMoney(el) {
+  formatMoneyInput(el);
+  el.addEventListener("input", (e) => { if (!e.isComposing) formatMoneyInput(el); });
+  el.addEventListener("compositionend", () => formatMoneyInput(el));
+  el.addEventListener("blur", () => formatMoneyInput(el));
+}
 // 年利(%) -> 月複利率
 const monthlyRate = (annualPct) => Math.pow(1 + annualPct / 100, 1 / 12) - 1;
 
+// 突発的な出費リスト [{age, amount, label}] を「月インデックス→合計額」に変換
+function lumpMapFor(oneTimes, startAge, totalMonths) {
+  const map = {};
+  (oneTimes || []).forEach((e) => {
+    const m0 = Math.round((e.age - startAge) * 12);
+    if (m0 >= 0 && m0 < totalMonths) map[m0] = (map[m0] || 0) + e.amount;
+  });
+  return map;
+}
+
 // ===== 順方向シミュレーション =====
-// 任意項目（inflPct / pension / pensionAge）は 0 や未入力なら自動で除外される
-function simulate({ age, income, expense, assets, ratePct, inflPct, pension, pensionAge }) {
+// 任意項目（inflPct / pension / pensionAge / oneTimes）は 0・未入力・空なら自動で除外される
+function simulate({ age, income, expense, assets, ratePct, inflPct, pension, pensionAge, oneTimes }) {
   const r = monthlyRate(ratePct);
   const infl = (inflPct || 0) / 100;
   const hasPension = pension > 0 && pensionAge > 0;
@@ -44,15 +67,17 @@ function simulate({ age, income, expense, assets, ratePct, inflPct, pension, pen
   let zeroAge = null;
   let zeroMonth = null;
   const totalMonths = (MAX_AGE - age) * 12;
+  const lumpByMonth = lumpMapFor(oneTimes, age, totalMonths);
 
   for (let m = 0; m < totalMonths; m++) {
     const curAge = age + m / 12;
     const expM = expense * Math.pow(1 + infl, m / 12); // 支出はインフレで増加
     const incM = income + (hasPension && curAge >= pensionAge ? pension : 0); // 受給開始後は年金を加算
-    const net = incM - expM;
+    const lump = lumpByMonth[m] || 0; // その月の突発的な出費
+    const net = incM - expM - lump;
     bal = bal * (1 + r) + net; // 月初に運用益、月末に収支を反映
     const ageAtMonth = age + Math.floor(m / 12);
-    months.push({ m, age: ageAtMonth, income: incM, expense: expM, net, balance: bal });
+    months.push({ m, age: ageAtMonth, income: incM, expense: expM + lump, net, balance: bal });
     if (bal <= 0 && zeroAge === null) {
       zeroAge = age + (m + 1) / 12;
       zeroMonth = m;
@@ -70,21 +95,23 @@ function simulate({ age, income, expense, assets, ratePct, inflPct, pension, pen
 // ===== 逆算 =====
 // deathAge 時点で targetAssets を残すには、月いくら使えるか（今の物価基準）
 // インフレ・年金を将来価値の総和で厳密に解く。任意項目は 0 で自動除外。
-function reverseSolve({ age, deathAge, targetAssets, assets, income, ratePct, inflPct, pension, pensionAge }) {
+function reverseSolve({ age, deathAge, targetAssets, assets, income, ratePct, inflPct, pension, pensionAge, oneTimes }) {
   const r = monthlyRate(ratePct);
   const infl = (inflPct || 0) / 100;
   const hasPension = pension > 0 && pensionAge > 0;
   const N = Math.max(1, Math.round((deathAge - age) * 12));
+  const lumpByMonth = lumpMapFor(oneTimes, age, N);
 
   // 最終時点(=N ヶ月後)の将来価値で収支を組み立て、基準支出 E について線形に解く
   const growthN = Math.pow(1 + r, N);
-  let fvIncome = 0;       // 収入ストリームの将来価値
+  let fvIncome = 0;       // 収入（−突発出費）ストリームの将来価値
   let fvExpenseUnit = 0;  // 基準支出 E=1 のときの支出ストリーム将来価値（E の係数）
   for (let m = 0; m < N; m++) {
     const curAge = age + m / 12;
     const incM = income + (hasPension && curAge >= pensionAge ? pension : 0);
+    const lump = lumpByMonth[m] || 0; // 突発的な出費（既知の流出）
     const fvFactor = Math.pow(1 + r, N - 1 - m); // その月の収支がN時点まで複利で増える倍率
-    fvIncome += incM * fvFactor;
+    fvIncome += (incM - lump) * fvFactor;
     fvExpenseUnit += Math.pow(1 + infl, m / 12) * fvFactor;
   }
   const fvAssets = assets * growthN;
@@ -207,6 +234,18 @@ function renderTable() {
   document.getElementById("tableScroll").innerHTML = html;
 }
 
+// 突発的な出費の入力欄を読み取る（年齢・金額が有効な行だけ採用）
+function readOneTimes(containerId) {
+  const list = [];
+  document.querySelectorAll(`#${containerId} .event-row`).forEach((row) => {
+    const age = parseFloat(toHalfWidth(row.querySelector(".ev-age").value));
+    const amount = parseFloat(toHalfWidth(row.querySelector(".ev-amount").value).replace(/,/g, ""));
+    const label = row.querySelector(".ev-label").value.trim() || "突発出費";
+    if (!isNaN(age) && !isNaN(amount) && amount > 0) list.push({ age, amount, label });
+  });
+  return list;
+}
+
 // ===== 順方向: 計算実行 =====
 function runForward() {
   const input = {
@@ -218,6 +257,7 @@ function runForward() {
     inflPct: num("f_infl"),
     pension: num("f_pension"),
     pensionAge: num("f_pensionage"),
+    oneTimes: readOneTimes("f_events"),
   };
   const sim = simulate(input);
   lastSim = sim;
@@ -270,6 +310,7 @@ function runReverse() {
     inflPct: num("r_infl"),
     pension: num("r_pension"),
     pensionAge: num("r_pensionage"),
+    oneTimes: readOneTimes("r_events"),
   };
   const res = reverseSolve(input);
   const hero = document.getElementById("r_hero");
@@ -323,13 +364,41 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // 金額欄をカンマ区切りに（入力中も整形、初期値も整形）
-  document.querySelectorAll("input.money").forEach((el) => {
-    formatMoneyInput(el);
-    el.addEventListener("input", () => formatMoneyInput(el));
+  // 金額欄をカンマ区切りに（入力中も整形、初期値も整形、全角/IME対応）
+  document.querySelectorAll("input.money").forEach(attachMoney);
+
+  // 突発的な出費：行の追加・削除
+  document.querySelectorAll(".add-event").forEach((btn) => {
+    btn.addEventListener("click", () => addEventRow(btn.dataset.target));
+  });
+  document.querySelectorAll(".events").forEach((container) => {
+    container.addEventListener("click", (e) => {
+      if (e.target.classList.contains("ev-remove")) {
+        e.target.closest(".event-row").remove();
+      }
+    });
   });
 
   // 初期計算(サンプル値で結果を表示)
   runForward();
   runReverse();
 });
+
+// 突発的な出費の入力行を 1 つ追加（任意で初期値を設定）
+function addEventRow(containerId, preset) {
+  const row = document.createElement("div");
+  row.className = "event-row";
+  row.innerHTML = `
+    <input class="ev-label" type="text" placeholder="例: 車購入" />
+    <input class="ev-age" type="number" inputmode="numeric" placeholder="歳" />
+    <input class="ev-amount money" type="text" inputmode="numeric" placeholder="金額(円)" />
+    <button type="button" class="ev-remove" aria-label="削除">×</button>`;
+  document.getElementById(containerId).appendChild(row);
+  if (preset) {
+    row.querySelector(".ev-label").value = preset.label || "";
+    row.querySelector(".ev-age").value = preset.age ?? "";
+    row.querySelector(".ev-amount").value = preset.amount ?? "";
+  }
+  attachMoney(row.querySelector(".ev-amount"));
+  return row;
+}

@@ -47,6 +47,16 @@
           <div class="field"><label for="f_pensionage">年金の受給開始年齢（任意）</label>
             <div class="input-wrap"><input id="f_pensionage" type="number" placeholder="例: 65" /><span class="unit">歳</span></div></div>
         </div>
+
+        <div class="events-block">
+          <div class="events-head">
+            <span class="events-title">突発的な出費（任意）</span>
+            <span class="events-hint">車の購入・住宅リフォーム・教育費など、一度きりの大きな出費を年齢で指定できます。</span>
+          </div>
+          <div id="f_events" class="events"></div>
+          <button type="button" class="add-event" data-target="f_events">＋ 出費を追加</button>
+        </div>
+
         <button id="f_run" class="btn">この条件で計算する</button>
       </div>
 
@@ -98,6 +108,16 @@
           <div class="field"><label for="r_pensionage">年金の受給開始年齢（任意）</label>
             <div class="input-wrap"><input id="r_pensionage" type="number" placeholder="例: 65" /><span class="unit">歳</span></div></div>
         </div>
+
+        <div class="events-block">
+          <div class="events-head">
+            <span class="events-title">突発的な出費（任意）</span>
+            <span class="events-hint">将来の大きな出費を見込んで逆算に反映できます。</span>
+          </div>
+          <div id="r_events" class="events"></div>
+          <button type="button" class="add-event" data-target="r_events">＋ 出費を追加</button>
+        </div>
+
         <button id="r_run" class="btn green">逆算する</button>
       </div>
 
